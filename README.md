@@ -9,7 +9,7 @@ According to these questions, I mainly proposed 3 methods to adress them.
 ```
 1. Multi-scale crop.  
 2. Multi-head self-attention.  
-
+```
 ---
 
 ## Multi-scale crop (Dataset)
