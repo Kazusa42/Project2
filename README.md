@@ -14,6 +14,7 @@ According to these questions, I mainly proposed 3 methods to adress them.
 
 ## Multi-scale crop (Dataset)
 The original dataset is DOTA v1.0. The original train set will be used as train and val set. The original val set will be treated as test set.
+
 ![msc](model_data/msc.png "msc")
 
 For multi-scale crop training, the original train set is cropped into 2 scales:  
@@ -45,6 +46,7 @@ About how to processing the data, refer to another project `DOTA-processing`.
 Use a pure global mulit-head self attention block to replace the depth-wise convolution in bottleneck. More etails about this design is shown blow.
 
 The backbone structure is modified from a convnext_tiny, only the depthwise convolution in stage 4 is replaced by a AttentionNeck.
+
 ![ab](model_data/ab.png "ab")
 
 ---
