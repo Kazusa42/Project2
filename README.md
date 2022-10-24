@@ -5,7 +5,7 @@ Code for thesis. Mainly focus on 2 problems.
 2. Multi-scale scenario
 ```
 
-According to these questions, I mainly proposed 3 methods to adress them.
+According to these questions, I mainly proposed 2 methods to adress them.
 ```
 1. Multi-scale crop.  
 2. Multi-head self-attention.  
