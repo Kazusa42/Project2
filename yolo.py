@@ -20,10 +20,10 @@ class YOLO(object):
         "input_shape": INPUT_SHAPE,
         # yoloX version。nano、tiny、s、m、l、x
         "phi": 'm',
-        "confidence": CONFIDENCE,
-        "nms_iou": NMS_SCORE,
+        "confidence": 0.5,
+        "nms_iou": 0.3,
         "letterbox_image": False,
-        "cuda": IF_CUDA,
+        "cuda": r'True',
     }
 
     @classmethod

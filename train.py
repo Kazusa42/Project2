@@ -20,7 +20,6 @@ from configure import *
 
 if __name__ == "__main__":
     Cuda = True
-
     fp16 = True
     classes_path = CLASSES_PATH
     model_path = MODEL_PATH
@@ -39,15 +38,15 @@ if __name__ == "__main__":
 
     UnFreeze_Epoch = UNFREZZEZ_EPOCH
     Unfreeze_batch_size = UNFREEZE_BATCH_SIZE
-    Freeze_Train = FREEZE_TRAIN
-    Init_lr = INIT_LR
-    Min_lr = MIN_LR
+    Freeze_Train = True
+    Init_lr = 0.001
+    Min_lr = Init_lr * 0.01
 
-    optimizer_type = OPT_TYPE
-    momentum = MOMENTUM
-    weight_decay = WEIGHT_DECAY
+    optimizer_type = r'adam'
+    momentum = 0.937
+    weight_decay = 5e-4
 
-    lr_decay_type = LR_DECAY_TYPE
+    lr_decay_type = r'cos'
     save_period = 1
     save_dir = 'logs'
 
@@ -124,7 +123,7 @@ if __name__ == "__main__":
             dataset=DATASET_PATH, model_path=model_path, input_shape=input_shape,
             Init_Epoch=Init_Epoch, Freeze_Epoch=Freeze_Epoch, UnFreeze_Epoch=UnFreeze_Epoch,
             Freeze_batch_size=Freeze_batch_size, Unfreeze_batch_size=Unfreeze_batch_size, Freeze_Train=Freeze_Train,
-            num_train=num_train, num_val=num_val, attention=IF_ATTENTION
+            num_train=num_train, num_val=num_val
         )
 
     if True:
