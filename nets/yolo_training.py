@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from torch.cuda.amp import autocast
+
 
 class IOUloss(nn.Module):
     def __init__(self, reduction="none", loss_type="iou"):
@@ -86,7 +88,7 @@ class YOLOLoss(nn.Module):
         grid = self.grids[k]
         hsize, wsize = output.shape[-2:]
         if grid.shape[2:4] != output.shape[2:4]:
-            yv, xv = torch.meshgrid([torch.arange(hsize), torch.arange(wsize)])
+            yv, xv = torch.meshgrid([torch.arange(hsize), torch.arange(wsize)], indexing='ij')
             grid = torch.stack((xv, yv), 2).view(1, hsize, wsize, 2).type(output.type())
             self.grids[k] = grid
         grid = grid.view(1, -1, 2)
@@ -171,14 +173,17 @@ class YOLOLoss(nn.Module):
         pair_wise_ious = self.bboxes_iou(gt_bboxes_per_image, bboxes_preds_per_image, False)
         pair_wise_ious_loss = -torch.log(pair_wise_ious + 1e-8)
 
-        cls_preds_ = cls_preds_.float().unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_() * \
-            obj_preds_.unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_()
+        # cls_preds_ = cls_preds_.float().unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_()
+        cls_preds_ = cls_preds_.float().sigmoid_().unsqueeze(0).repeat(num_gt, 1, 1)
+        cls_preds_ = cls_preds_ * obj_preds_.sigmoid_().unsqueeze(0).repeat(num_gt, 1, 1)
         if self.fp16:
-            with torch.cuda.amp.autocast(enabled=False):
+            with autocast(enabled=False):
                 gt_cls_per_image = F.one_hot(gt_classes.to(torch.int64),
                                              self.num_classes).float().unsqueeze(1).repeat(1, num_in_boxes_anchor, 1)
-                pair_wise_cls_loss = F.binary_cross_entropy(cls_preds_.sqrt_(),
-                                                            gt_cls_per_image, reduction="none").sum(-1)
+                cls_preds_ = cls_preds_.sqrt_()
+                # pair_wise_cls_loss = F.binary_cross_entropy(cls_preds_, gt_cls_per_image, reduction="none").sum(-1)
+                pair_wise_cls_loss = \
+                    F.binary_cross_entropy_with_logits(cls_preds_, gt_cls_per_image, reduction="none").sum(-1)
         else:
             gt_cls_per_image = \
                 F.one_hot(gt_classes.to(torch.int64),
@@ -250,7 +255,7 @@ class YOLOLoss(nn.Module):
         gt_bboxes_per_image_t = (gt_bboxes_per_image[:, 1]).unsqueeze(1).repeat(1, total_num_anchors) \
             - center_radius * expanded_strides_per_image.unsqueeze(0)
         gt_bboxes_per_image_b = (gt_bboxes_per_image[:, 1]).unsqueeze(1).repeat(1, total_num_anchors) \
-                                + center_radius * expanded_strides_per_image.unsqueeze(0)
+            + center_radius * expanded_strides_per_image.unsqueeze(0)
 
         c_l = x_centers_per_image - gt_bboxes_per_image_l
         c_r = gt_bboxes_per_image_r - x_centers_per_image
@@ -272,8 +277,10 @@ class YOLOLoss(nn.Module):
         topk_ious, _ = torch.topk(pair_wise_ious, n_candidate_k, dim=1)
         dynamic_ks = torch.clamp(topk_ious.sum(1).int(), min=1)
 
+        ks = dynamic_ks.tolist()
         for gt_idx in range(num_gt):
-            _, pos_idx = torch.topk(cost[gt_idx], k=dynamic_ks[gt_idx].item(), largest=False)
+            _, pos_idx = torch.topk(cost[gt_idx], k=ks[gt_idx], largest=False)
+            # _, pos_idx = torch.topk(cost[gt_idx], k=dynamic_ks[gt_idx].item(), largest=False)
             matching_matrix[gt_idx][pos_idx] = 1.0
         del topk_ious, dynamic_ks, pos_idx
 
