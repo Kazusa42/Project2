@@ -13,10 +13,13 @@ from nets.yolo_training import (ModelEMA, YOLOLoss, get_lr_scheduler,
                                 set_optimizer_lr, weights_init)
 from utils.callbacks import LossHistory, EvalCallback
 from utils.dataloader import YoloDataset, yolo_dataset_collate
+
 from utils.utils import get_classes, show_config
 from utils.utils_fit import fit_one_epoch
 
 from configure import *
+
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 if __name__ == "__main__":
     Cuda = True
@@ -117,13 +120,12 @@ if __name__ == "__main__":
         val_lines = f.readlines()
     num_train = len(train_lines)
     num_val = len(val_lines)
-
     if local_rank == 0:
         show_config(
-            dataset=DATASET_PATH, model_path=model_path, input_shape=input_shape,
-            Init_Epoch=Init_Epoch, Freeze_Epoch=Freeze_Epoch, UnFreeze_Epoch=UnFreeze_Epoch,
+            dataset=DATASET_PATH, model_path=model_path, Init_Epoch=Init_Epoch,
+            Freeze_Epoch=Freeze_Epoch, UnFreeze_Epoch=UnFreeze_Epoch,
             Freeze_batch_size=Freeze_batch_size, Unfreeze_batch_size=Unfreeze_batch_size, Freeze_Train=Freeze_Train,
-            num_train=num_train, num_val=num_val
+            num_train=num_train, num_val=num_val, classes_num=num_classes
         )
 
     if True:
