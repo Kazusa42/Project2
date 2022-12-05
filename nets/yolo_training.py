@@ -181,9 +181,9 @@ class YOLOLoss(nn.Module):
                 gt_cls_per_image = F.one_hot(gt_classes.to(torch.int64),
                                              self.num_classes).float().unsqueeze(1).repeat(1, num_in_boxes_anchor, 1)
                 cls_preds_ = cls_preds_.sqrt_()
-                # pair_wise_cls_loss = F.binary_cross_entropy(cls_preds_, gt_cls_per_image, reduction="none").sum(-1)
-                pair_wise_cls_loss = \
-                    F.binary_cross_entropy_with_logits(cls_preds_, gt_cls_per_image, reduction="none").sum(-1)
+                pair_wise_cls_loss = F.binary_cross_entropy(cls_preds_, gt_cls_per_image, reduction="none").sum(-1)
+                """pair_wise_cls_loss = \
+                    F.binary_cross_entropy_with_logits(cls_preds_, gt_cls_per_image, reduction="none").sum(-1)"""
         else:
             gt_cls_per_image = \
                 F.one_hot(gt_classes.to(torch.int64),
