@@ -31,13 +31,14 @@ class MHSA(nn.Module):
 
     def forward(self, x):
         n_batch, C, width, height = x.size()
-        q = self.query(x).view(n_batch, self.heads, C // self.heads, -1)
-        k = self.key(x).view(n_batch, self.heads, C // self.heads, -1)
-        v = self.value(x).view(n_batch, self.heads, C // self.heads, -1)
+        q = self.query(x).view(n_batch, self.heads, torch.div(C, self.heads), -1)
+        k = self.key(x).view(n_batch, self.heads, torch.div(C, self.heads), -1)
+        v = self.value(x).view(n_batch, self.heads, torch.div(C, self.heads), -1)
 
         content_content = torch.matmul(q.permute(0, 1, 3, 2), k)
 
-        content_position = (self.rel_h + self.rel_w).view(1, self.heads, C // self.heads, -1).permute(0, 1, 3, 2)
+        content_position = (self.rel_h + self.rel_w).view(1, self.heads,
+                                                          torch.div(C, self.heads), -1).permute(0, 1, 3, 2)
         content_position = torch.matmul(content_position, q)
 
         energy = content_content + content_position
@@ -84,4 +85,4 @@ class AttenBlock(nn.Module):
         out += self.shortcut(x)
         out = self.act(out)
         return out
-
+    
