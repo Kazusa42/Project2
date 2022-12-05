@@ -1,5 +1,7 @@
 import numpy as np
 from PIL import Image
+import torch
+from torch import nn
 
 
 def cvtColor(image):
@@ -53,3 +55,21 @@ def show_config(**kwargs):
     for key, value in kwargs.items():
         print('|%25s | %40s|' % (str(key), str(value)))
     print('-' * 70)
+
+
+class SiLU(nn.Module):
+    @staticmethod
+    def forward(x):
+        return x * torch.sigmoid(x)
+
+
+def get_activation(name="silu", inplace=True):
+    if name == "silu":
+        module = SiLU()
+    elif name == "relu":
+        module = nn.ReLU(inplace=inplace)
+    elif name == "lrelu":
+        module = nn.LeakyReLU(0.1, inplace=inplace)
+    else:
+        raise AttributeError("Unsupported act type: {}".format(name))
+    return module
