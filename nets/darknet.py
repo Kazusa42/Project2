@@ -1,23 +1,9 @@
 import torch
 from torch import nn
 
-
-class SiLU(nn.Module):
-    @staticmethod
-    def forward(x):
-        return x * torch.sigmoid(x)
-
-
-def get_activation(name="silu", inplace=True):
-    if name == "silu":
-        module = SiLU()
-    elif name == "relu":
-        module = nn.ReLU(inplace=inplace)
-    elif name == "lrelu":
-        module = nn.LeakyReLU(0.1, inplace=inplace)
-    else:
-        raise AttributeError("Unsupported act type: {}".format(name))
-    return module
+from .attention import AttenBlock
+from configure import ATTEN
+from utils.utils import get_activation
 
 
 class Focus(nn.Module):
@@ -115,14 +101,19 @@ class CSPLayer(nn.Module):
 
 
 class CSPDarknet(nn.Module):
-    def __init__(self, dep_mul, wid_mul, out_features=("dark3", "dark4", "dark5"), depthwise=True, act="silu", ):
+    def __init__(self, dep_mul, wid_mul, out_features=("dark3", "dark4", "dark5"),
+                 depthwise=True, act="silu", atten=ATTEN):
         super().__init__()
         assert out_features, "please provide output features of Darknet"
         self.out_features = out_features
+
         conv = DWConv if depthwise else BaseConv
+        bottleneck = AttenBlock if atten else SPPBottleneck
 
         base_channels = int(wid_mul * 64)  # 64
         base_depth = max(round(dep_mul * 3), 1)  # 3
+
+        lastCSPInChannel = base_channels * 64 if atten else base_channels * 16
 
         self.stem = Focus(3, base_channels, ksize=3, act=act)
 
@@ -143,8 +134,10 @@ class CSPDarknet(nn.Module):
 
         self.dark5 = nn.Sequential(
             conv(base_channels * 8, base_channels * 16, 3, 2, act=act),
-            SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
-            CSPLayer(base_channels * 16, base_channels * 16, n=base_depth, shortcut=False, depthwise=depthwise,
+            # SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
+            # AttenBlock(base_channels * 16, base_channels * 16, mhsa=True, resolution=[20, 20]),
+            bottleneck(base_channels * 16, base_channels * 16, activation=act),
+            CSPLayer(lastCSPInChannel, base_channels * 16, n=base_depth, shortcut=False, depthwise=depthwise,
                      act=act),
         )
 

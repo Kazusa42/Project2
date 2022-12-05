@@ -1,51 +1,22 @@
 import torch
-from torch import nn
+import torch.nn as nn
 import torch.nn.functional as F
-from timm.models.layers import DropPath
 
-from configure import *
+from utils.utils import get_activation
 
 
 def get_n_params(model):
     pp = 0
     for p in list(model.parameters()):
-        n = 1
+        tmp = 1
         for s in list(p.size()):
-            n = n * s
-        pp += n
+            tmp = tmp*s
+        pp += tmp
     return pp
 
 
-class LayerNorm(nn.Module):
-    r""" LayerNorm that supports two data formats: channels_last (default) or channels_first.
-    The ordering of the dimensions in the inputs. channels_last corresponds to inputs with
-    shape (batch_size, height, width, channels) while channels_first corresponds to inputs
-    with shape (batch_size, channels, height, width).
-    """
-
-    def __init__(self, normalized_shape, eps=1e-6, data_format="channels_last"):
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(normalized_shape))
-        self.bias = nn.Parameter(torch.zeros(normalized_shape))
-        self.eps = eps
-        self.data_format = data_format
-        if self.data_format not in ["channels_last", "channels_first"]:
-            raise NotImplementedError
-        self.normalized_shape = (normalized_shape,)
-
-    def forward(self, x):
-        if self.data_format == "channels_last":
-            return F.layer_norm(x, self.normalized_shape, self.weight, self.bias, self.eps)
-        elif self.data_format == "channels_first":
-            u = x.mean(1, keepdim=True)
-            s = (x - u).pow(2).mean(1, keepdim=True)
-            x = (x - u) / torch.sqrt(s + self.eps)
-            x = self.weight[:, None, None] * x + self.bias[:, None, None]
-            return x
-
-
 class MHSA(nn.Module):
-    def __init__(self, n_dims, width, height, heads=4):
+    def __init__(self, n_dims, width=14, height=14, heads=4):
         super(MHSA, self).__init__()
         self.heads = heads
 
@@ -60,12 +31,12 @@ class MHSA(nn.Module):
 
     def forward(self, x):
         n_batch, C, width, height = x.size()
-
         q = self.query(x).view(n_batch, self.heads, C // self.heads, -1)
         k = self.key(x).view(n_batch, self.heads, C // self.heads, -1)
         v = self.value(x).view(n_batch, self.heads, C // self.heads, -1)
 
         content_content = torch.matmul(q.permute(0, 1, 3, 2), k)
+
         content_position = (self.rel_h + self.rel_w).view(1, self.heads, C // self.heads, -1).permute(0, 1, 3, 2)
         content_position = torch.matmul(content_position, q)
 
@@ -78,28 +49,108 @@ class MHSA(nn.Module):
         return out
 
 
-class AttentionBlock(nn.Module):
+class AttenBlock(nn.Module):
     expansion = 4
 
-    def __init__(self, in_planes, planes, heads=4, drop_path=0., resolution=RESOLUTION):
-        super(AttentionBlock, self).__init__()
+    def __init__(self, in_planes, planes, stride=1, heads=4, activation="silu"):
+        super(AttenBlock, self).__init__()
 
-        self.dsconv = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
 
-        self.attention = nn.ModuleList()
-        self.attention.append(MHSA(planes, width=int(resolution[0]), height=int(resolution[1]), heads=heads))
-        self.attention = nn.Sequential(*self.attention)
+        self.conv2 = nn.ModuleList()
+        self.conv2.append(MHSA(planes, width=int(20), height=int(20), heads=heads))
+        if stride == 2:
+            self.conv2.append(nn.AvgPool2d(2, 2))
+        self.conv2 = nn.Sequential(*self.conv2)
+        self.bn2 = nn.BatchNorm2d(planes)
 
-        self.layernorm = LayerNorm(planes)
+        self.conv3 = nn.Conv2d(planes, self.expansion * planes, kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(self.expansion * planes)
 
-        self.conv1 = nn.Conv2d(planes, planes * self.expansion, kernel_size=1, bias=False)
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.act = get_activation(activation, inplace=True)
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion*planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride),
+                nn.BatchNorm2d(self.expansion*planes)
+            )
 
     def forward(self, x):
-        out = self.dsconv(x)
-        out = self.attention(out)
-        out = out.permute(0, 2, 3, 1)
-        out = self.layernorm(out)
-        out = out.permute(0, 3, 1, 2)
-        out = F.gelu(self.conv1(out))
-        return out + self.drop_path(x)
+        out = self.act(self.bn1(self.conv1(x)))
+        out = self.act(self.bn2(self.conv2(out)))
+        out = self.bn3(self.conv3(out))
+        out += self.shortcut(x)
+        out = self.act(out)
+        return out
+
+
+class ResNet(nn.Module):
+    def __init__(self, block, num_blocks, out_features=("dark3", "dark4", "dark5"), resolution=(640, 640), heads=4):
+        super(ResNet, self).__init__()
+        self.in_planes = 64
+        self.resolution = list(resolution)
+        self.out_features = out_features
+
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        if self.conv1.stride[0] == 2:
+            self.resolution[0] /= 2
+        if self.conv1.stride[1] == 2:
+            self.resolution[1] /= 2
+        self.bn1 = nn.BatchNorm2d(64)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        if self.maxpool.stride == 2:
+            self.resolution[0] /= 2
+            self.resolution[1] /= 2
+
+        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
+        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2, heads=heads, mhsa=True)
+
+    def _make_layer(self, block, planes, num_blocks, stride=1, heads=4, mhsa=False):
+        strides = [stride] + [1]*(num_blocks-1)
+        layers = []
+        for idx, stride in enumerate(strides):
+            layers.append(block(self.in_planes, planes, stride, heads, mhsa, self.resolution))
+            if stride == 2:
+                self.resolution[0] /= 2
+                self.resolution[1] /= 2
+            self.in_planes = planes * block.expansion
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        """
+        out = self.relu(self.bn1(self.conv1(x)))
+        out = self.maxpool(out)
+
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = self.layer4(out)
+
+        out = self.avgpool(out)
+        out = torch.flatten(out, 1)
+        out = self.fc(out)
+        return out
+        """
+
+        outputs = {}
+        x = self.relu(self.bn1(self.conv1(x)))
+        x = self.maxpool(x)
+        outputs["stem"] = x
+
+        x = self.layer1(x)
+        outputs["dark2"] = x
+
+        x = self.layer2(x)
+        outputs["dark3"] = x
+
+        x = self.layer3(x)
+        outputs["dark4"] = x
+
+        x = self.layer4(x)
+        outputs["dark5"] = x
+        return {k: v for k, v in outputs.items() if k in self.out_features}
