@@ -81,15 +81,18 @@ class Bottleneck(nn.Module):
 
 
 class CSPLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, n=1, shortcut=True, expansion=0.5, depthwise=True, act="silu", ):
+    def __init__(self, in_channels, out_channels, n=1, shortcut=True, expansion=0.5, depthwise=True,
+                 act="silu", atten=False):
         super().__init__()
         hidden_channels = int(out_channels * expansion)
         self.conv1 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
         self.conv2 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
         self.conv3 = BaseConv(2 * hidden_channels, out_channels, 1, stride=1, act=act)
-
-        module_list = [Bottleneck(hidden_channels, hidden_channels, shortcut, 1.0, depthwise, act=act) for _ in
-                       range(n)]
+        if atten:
+            module_list = [AttenBlock(hidden_channels, hidden_channels) for _ in range(n)]
+        else:
+            module_list = [Bottleneck(hidden_channels, hidden_channels, shortcut, 1.0, depthwise, act=act) for _ in
+                           range(n)]
         self.m = nn.Sequential(*module_list)
 
     def forward(self, x):
@@ -108,12 +111,9 @@ class CSPDarknet(nn.Module):
         self.out_features = out_features
 
         conv = DWConv if depthwise else BaseConv
-        bottleneck = AttenBlock if atten else SPPBottleneck
 
         base_channels = int(wid_mul * 64)  # 64
         base_depth = max(round(dep_mul * 3), 1)  # 3
-
-        lastCSPInChannel = base_channels * 64 if atten else base_channels * 16
 
         self.stem = Focus(3, base_channels, ksize=3, act=act)
 
@@ -134,10 +134,8 @@ class CSPDarknet(nn.Module):
 
         self.dark5 = nn.Sequential(
             conv(base_channels * 8, base_channels * 16, 3, 2, act=act),
-            # SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
-            # AttenBlock(base_channels * 16, base_channels * 16, mhsa=True, resolution=[20, 20]),
-            bottleneck(base_channels * 16, base_channels * 16, activation=act),
-            CSPLayer(lastCSPInChannel, base_channels * 16, n=base_depth, shortcut=False, depthwise=depthwise,
+            SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
+            CSPLayer(base_channels * 16, base_channels * 16, n=base_depth, shortcut=False, depthwise=depthwise,
                      act=act),
         )
 
