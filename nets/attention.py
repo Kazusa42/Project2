@@ -65,16 +65,20 @@ class AttenBlock(nn.Module):
         self.conv2 = nn.Sequential(*self.conv2)
         self.bn2 = nn.BatchNorm2d(planes)
 
-        self.conv3 = nn.Conv2d(planes, self.expansion * planes, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(self.expansion * planes)
+        # self.conv3 = nn.Conv2d(planes, self.expansion * planes, kernel_size=1, bias=False)
+        self.conv3 = nn.Conv2d(planes, planes, kernel_size=1, bias=False)
+        # self.bn3 = nn.BatchNorm2d(self.expansion * planes)
+        self.bn3 = nn.BatchNorm2d(planes)
 
         self.act = get_activation(activation, inplace=True)
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion * planes:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride),
-                nn.BatchNorm2d(self.expansion * planes)
+                # nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride),
+                # nn.BatchNorm2d(self.expansion * planes)
+                nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride),
+                nn.BatchNorm2d(planes)
             )
 
     def forward(self, x):
@@ -83,4 +87,5 @@ class AttenBlock(nn.Module):
         out = self.bn3(self.conv3(out))
         out += self.shortcut(x)
         out = self.act(out)
+        print(out.shape)
         return out

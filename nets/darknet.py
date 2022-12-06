@@ -85,10 +85,12 @@ class CSPLayer(nn.Module):
                  act="silu", atten=False):
         super().__init__()
         hidden_channels = int(out_channels * expansion)
+
         self.conv1 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
         self.conv2 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
         self.conv3 = BaseConv(2 * hidden_channels, out_channels, 1, stride=1, act=act)
         if atten:
+            # module_list = [AttenBlock(hidden_channels * pow(4, i), hidden_channels * pow(4, i)) for i in range(n)]
             module_list = [AttenBlock(hidden_channels, hidden_channels) for _ in range(n)]
         else:
             module_list = [Bottleneck(hidden_channels, hidden_channels, shortcut, 1.0, depthwise, act=act) for _ in
@@ -104,8 +106,7 @@ class CSPLayer(nn.Module):
 
 
 class CSPDarknet(nn.Module):
-    def __init__(self, dep_mul, wid_mul, out_features=("dark3", "dark4", "dark5"),
-                 depthwise=True, act="silu", atten=ATTEN):
+    def __init__(self, dep_mul, wid_mul, out_features=("dark3", "dark4", "dark5"), depthwise=True, act="silu"):
         super().__init__()
         assert out_features, "please provide output features of Darknet"
         self.out_features = out_features
@@ -114,6 +115,7 @@ class CSPDarknet(nn.Module):
 
         base_channels = int(wid_mul * 64)  # 64
         base_depth = max(round(dep_mul * 3), 1)  # 3
+        # print(base_depth)
 
         self.stem = Focus(3, base_channels, ksize=3, act=act)
 
@@ -136,7 +138,7 @@ class CSPDarknet(nn.Module):
             conv(base_channels * 8, base_channels * 16, 3, 2, act=act),
             SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
             CSPLayer(base_channels * 16, base_channels * 16, n=base_depth, shortcut=False, depthwise=depthwise,
-                     act=act),
+                     act=act, atten=ATTEN),
         )
 
     def forward(self, x):
