@@ -1,14 +1,14 @@
 # Project2
 Code for thesis. Mainly focus on 2 problems.  
 ```
-1. High resolution image.
-2. Multi-scale scenario
+1. High resolution image and Multi-scale scenario
+2. Current ViTs can not apply MHSA at the early stage of backbone.
 ```
 
 According to these questions, I mainly proposed 2 methods to adress them.
 ```
 1. Multi-scale crop.  
-2. Multi-head self-attention.  
+2. Super token multi-head self-attention.  
 ```
 ---
 
