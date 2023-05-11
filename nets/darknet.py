@@ -2,7 +2,8 @@ import torch
 from torch import nn
 
 from .attention import AttenBlock
-from configure import ATTEN
+from .sta import StokenAttentionLayer
+from configure import ATTEN_TYPE
 from utils.utils import get_activation
 
 
@@ -82,16 +83,15 @@ class Bottleneck(nn.Module):
 
 class CSPLayer(nn.Module):
     def __init__(self, in_channels, out_channels, n=1, shortcut=True, expansion=0.5, depthwise=True,
-                 act="silu", atten=False):
+                 act="silu", atten_type=ATTEN_TYPE):
         super().__init__()
         hidden_channels = int(out_channels * expansion)
 
         self.conv1 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
         self.conv2 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
         self.conv3 = BaseConv(2 * hidden_channels, out_channels, 1, stride=1, act=act)
-        if atten:
-            # module_list = [AttenBlock(hidden_channels * pow(4, i), hidden_channels * pow(4, i)) for i in range(n)]
-            module_list = [AttenBlock(hidden_channels, hidden_channels) for _ in range(n)]
+        if atten_type == 'light':
+             module_list = [StokenAttentionLayer(hidden_channels, 1, [4, 4]) for _ in range(n)]
         else:
             module_list = [Bottleneck(hidden_channels, hidden_channels, shortcut, 1.0, depthwise, act=act) for _ in
                            range(n)]
@@ -103,10 +103,30 @@ class CSPLayer(nn.Module):
         x_1 = self.m(x_1)
         x = torch.cat((x_1, x_2), dim=1)
         return self.conv3(x)
+    
+
+class CSPLayerWithTraditionalAttention(nn.Module):
+    def __init__(self, in_channels, out_channels, n=1, shortcut=True, expansion=0.5, depthwise=True, act="silu"):
+        super().__init__()
+        hidden_channels = int(out_channels * expansion)
+
+        self.conv1 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
+        self.conv2 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
+        self.conv3 = BaseConv(2 * hidden_channels, out_channels, 1, stride=1, act=act)
+
+        module_list = [AttenBlock(hidden_channels, hidden_channels) for _ in range(n)]
+        self.m = nn.Sequential(*module_list)
+
+    def forward(self, x):
+        x_1 = self.conv1(x)
+        x_2 = self.conv2(x)
+        x_1 = self.m(x_1)
+        x = torch.cat((x_1, x_2), dim=1)
+        return self.conv3(x)
 
 
 class CSPDarknet(nn.Module):
-    def __init__(self, dep_mul, wid_mul, out_features=("dark3", "dark4", "dark5"), depthwise=True, act="silu"):
+    def __init__(self, dep_mul, wid_mul, out_features=("dark3", "dark4", "dark5"), depthwise=True, act="silu", atten_type=ATTEN_TYPE):
         super().__init__()
         assert out_features, "please provide output features of Darknet"
         self.out_features = out_features
@@ -134,12 +154,20 @@ class CSPDarknet(nn.Module):
             CSPLayer(base_channels * 8, base_channels * 8, n=base_depth * 3, depthwise=depthwise, act=act),
         )
 
-        self.dark5 = nn.Sequential(
-            conv(base_channels * 8, base_channels * 16, 3, 2, act=act),
-            SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
-            CSPLayer(base_channels * 16, base_channels * 16, n=base_depth, shortcut=False, depthwise=depthwise,
-                     act=act, atten=ATTEN),
-        )
+        if atten_type == 'traditional':
+            self.dark5 = nn.Sequential(
+                conv(base_channels * 8, base_channels * 16, 3, 2, act=act),
+                SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
+                CSPLayerWithTraditionalAttention(base_channels * 16, base_channels * 16, n=base_depth,
+                                                 shortcut=False, depthwise=depthwise, act=act),
+            )
+        else:
+            self.dark5 = nn.Sequential(
+                conv(base_channels * 8, base_channels * 16, 3, 2, act=act),
+                SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
+                CSPLayer(base_channels * 16, base_channels * 16, n=base_depth, shortcut=False, depthwise=depthwise,
+                        act=act, atten_type=ATTEN_TYPE),
+            )
 
     def forward(self, x):
         outputs = {}
