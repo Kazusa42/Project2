@@ -12,7 +12,7 @@ classes_path = r'model_data/DOTA_classes.txt'
 trainval_percent = 1.0
 train_percent = 0.9
 
-dataset_path = r'./DOTA/Multi/'
+dataset_path = r'./DOTA/Single/'
 
 divided_type = ['train', 'val']
 classes, _ = get_classes(classes_path)
