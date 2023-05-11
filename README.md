@@ -45,9 +45,9 @@ About how to processing the data, refer to another project `DOTA-processing`.
 ## Light Multi-head self-attention (AttentionBlock) 
 Using attention in traditional convolution network is a trend now. However, it is hard to apply attention at the shallow layer of backbone due to the huge computation.
 
-Use a pure global mulit-head self attention block to replace the depth-wise convolution in bottleneck. More etails about this design is shown blow.
+So, in this project, we proposed a new attention mechanism, which is light enough to be implemented at the shallow stage of a network.
 
-The backbone structure is modified from a convnext_tiny, only the depthwise convolution in stage 4 is replaced by a AttentionNeck.
+The detail of this method will update soon.
 
 ![ab](model_data/ab.png "ab")
 
