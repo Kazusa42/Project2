@@ -8,7 +8,7 @@ Code for thesis. Mainly focus on 2 problems.
 According to these questions, I mainly proposed 2 methods to adress them.
 ```
 1. Multi-scale crop.  
-2. Super token multi-head self-attention.  
+2. Light multi-head self-attention.  
 ```
 ---
 
@@ -42,7 +42,9 @@ About how to processing the data, refer to another project `DOTA-processing`.
 
 ---
 
-## Multi-head self-attention (AttentionNeck)  
+## Light Multi-head self-attention (AttentionBlock) 
+Using attention in traditional convolution network is a trend now. However, it is hard to apply attention at the shallow layer of backbone due to the huge computation.
+
 Use a pure global mulit-head self attention block to replace the depth-wise convolution in bottleneck. More etails about this design is shown blow.
 
 The backbone structure is modified from a convnext_tiny, only the depthwise convolution in stage 4 is replaced by a AttentionNeck.
