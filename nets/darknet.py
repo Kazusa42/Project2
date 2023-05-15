@@ -83,7 +83,7 @@ class Bottleneck(nn.Module):
 
 class CSPLayer(nn.Module):
     def __init__(self, in_channels, out_channels, n=1, shortcut=True, expansion=0.5, depthwise=True,
-                 act="silu", atten_type=ATTEN_TYPE):
+                 act="silu", atten_type=ATTEN_TYPE, token_num=4, head=4):
         super().__init__()
         hidden_channels = int(out_channels * expansion)
 
@@ -91,7 +91,7 @@ class CSPLayer(nn.Module):
         self.conv2 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
         self.conv3 = BaseConv(2 * hidden_channels, out_channels, 1, stride=1, act=act)
         if atten_type == 'light':
-             module_list = [StokenAttentionLayer(hidden_channels, 1, [4, 4]) for _ in range(n)]
+             module_list = [StokenAttentionLayer(hidden_channels, 1, [token_num, token_num], num_heads=head) for _ in range(n)]
         else:
             module_list = [Bottleneck(hidden_channels, hidden_channels, shortcut, 1.0, depthwise, act=act) for _ in
                            range(n)]
@@ -126,7 +126,8 @@ class CSPLayerWithTraditionalAttention(nn.Module):
 
 
 class CSPDarknet(nn.Module):
-    def __init__(self, dep_mul, wid_mul, out_features=("dark3", "dark4", "dark5"), depthwise=True, act="silu", atten_type=ATTEN_TYPE):
+    def __init__(self, dep_mul, wid_mul, out_features=("dark3", "dark4", "dark5"), depthwise=True, act="silu",
+                 atten_type=ATTEN_TYPE, token_nums=[8, 4, 1, 1], heads=[2, 3, 6, 8]):
         super().__init__()
         assert out_features, "please provide output features of Darknet"
         self.out_features = out_features
@@ -141,17 +142,20 @@ class CSPDarknet(nn.Module):
 
         self.dark2 = nn.Sequential(
             conv(base_channels, base_channels * 2, 3, 2, act=act),
-            CSPLayer(base_channels * 2, base_channels * 2, n=base_depth, depthwise=depthwise, act=act),
+            CSPLayer(base_channels * 2, base_channels * 2, n=base_depth, depthwise=depthwise, act=act,
+                     atten_type=atten_type, token_num=token_nums[0], head=heads[0]),
         )
 
         self.dark3 = nn.Sequential(
             conv(base_channels * 2, base_channels * 4, 3, 2, act=act),
-            CSPLayer(base_channels * 4, base_channels * 4, n=base_depth * 3, depthwise=depthwise, act=act),
+            CSPLayer(base_channels * 4, base_channels * 4, n=base_depth * 3, depthwise=depthwise, act=act,
+                     atten_type=atten_type, token_num=token_nums[1], head=heads[1]),
         )
 
         self.dark4 = nn.Sequential(
             conv(base_channels * 4, base_channels * 8, 3, 2, act=act),
-            CSPLayer(base_channels * 8, base_channels * 8, n=base_depth * 3, depthwise=depthwise, act=act),
+            CSPLayer(base_channels * 8, base_channels * 8, n=base_depth * 3, depthwise=depthwise, act=act,
+                     atten_type=atten_type, token_num=token_nums[2], head=heads[2]),
         )
 
         if atten_type == 'traditional':
@@ -166,7 +170,7 @@ class CSPDarknet(nn.Module):
                 conv(base_channels * 8, base_channels * 16, 3, 2, act=act),
                 SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
                 CSPLayer(base_channels * 16, base_channels * 16, n=base_depth, shortcut=False, depthwise=depthwise,
-                        act=act, atten_type=ATTEN_TYPE),
+                        act=act, atten_type=ATTEN_TYPE, token_num=token_nums[3], head=heads[3]),
             )
 
     def forward(self, x):
