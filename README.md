@@ -15,12 +15,12 @@ Based on these 2 problems, two challenges then raise:
 
 According to these questions, I mainly proposed 2 methods to adress them.
 ```
-1. Multi-scale crop.  
+1. Multi-scale scheme.  
 2. Light multi-head self-attention.  
 ```
 ---
 
-## Multi-scale crop (Dataset)
+## Multi-scale scheme
 The original dataset is DOTA v1.0. The original train set will be used as train and val set. The original val set will be treated as test set.
 
 ![msc](model_data/msc.png "msc")
