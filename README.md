@@ -13,7 +13,6 @@ Based on these 2 problems, two challenges then raise:
 2. Can we efficiently extract global information using attention mechanism at the early stage of a network?
 ```
 
-
 According to these questions, I mainly proposed 2 methods to adress them.
 ```
 1. Multi-scale crop.  
