@@ -127,7 +127,7 @@ class CSPLayerWithTraditionalAttention(nn.Module):
 
 class CSPDarknet(nn.Module):
     def __init__(self, dep_mul, wid_mul, out_features=("dark3", "dark4", "dark5"), depthwise=True, act="silu",
-                 atten_type=ATTEN_TYPE, token_nums=[8, 4, 1, 1], heads=[2, 3, 6, 8]):
+                 atten_type=ATTEN_TYPE, token_nums=[8, 4, 1, 1], heads=[2, 2, 4, 4]):
         super().__init__()
         assert out_features, "please provide output features of Darknet"
         self.out_features = out_features
