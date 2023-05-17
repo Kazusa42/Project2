@@ -1,4 +1,4 @@
-# Project2
+# Multi-scale Detection with Attention Mechanism for High-Resolution Images
 Code for thesis. Mainly focus on 2 problems.  
 ```
 1. High resolution image and Multi-scale scenario
