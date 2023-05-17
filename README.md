@@ -1,9 +1,18 @@
 # Multi-scale Detection with Attention Mechanism for High-Resolution Images
-Code for thesis. Mainly focus on 2 problems.  
+
+Code for thesis. According to the current research about object detection, this thesis focus on 2 problems. 
 ```
 1. High resolution image and Multi-scale scenario
 2. Current ViTs can not apply MHSA at the early stage of backbone.
 ```
+
+Based on these 2 problems, two challenges then raise:
+```
+1. Can we conveniently increase the bandwidth of a system to make it suitable for large-scale variation?
+
+2. Can we efficiently extract global information using attention mechanism at the early stage of a network?
+```
+
 
 According to these questions, I mainly proposed 2 methods to adress them.
 ```
