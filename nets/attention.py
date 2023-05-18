@@ -31,7 +31,7 @@ class MHSA(nn.Module):
 
     def forward(self, x):
         n_batch, C, width, height = x.size()
-        print(x.size())
+        # print(x.size())
         q = self.query(x).view(n_batch, self.heads, C // self.heads, -1)
         k = self.key(x).view(n_batch, self.heads, C // self.heads, -1)
         v = self.value(x).view(n_batch, self.heads, C // self.heads, -1)
@@ -41,21 +41,21 @@ class MHSA(nn.Module):
         print(v.size())"""
 
         content_content = torch.matmul(q.permute(0, 1, 3, 2), k)
-        print('content_content.size():')
-        print(content_content.size())
+        """print('content_content.size():')
+        print(content_content.size())"""
 
         content_position = (self.rel_h + self.rel_w).view(1, self.heads, C // self.heads, -1).permute(0, 1, 3, 2)
-        print('self.rel_h.size():')
+        """print('self.rel_h.size():')
         print(self.rel_h.size())
         print('self.rel_w.size():')
         print(self.rel_w.size())
         print('w+h.size():')
         print((self.rel_w + self.rel_h).size())
         print('content_position.size():')
-        print(content_position.size())
+        print(content_position.size())"""
         content_position = torch.matmul(content_position, q)
-        print('content_position.size():')
-        print(content_position.size())
+        """print('content_position.size():')
+        print(content_position.size())"""
 
         energy = content_content + content_position
         attention = self.softmax(energy)
