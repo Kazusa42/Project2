@@ -3,10 +3,12 @@ import torchvision
 from nets.yolo import YoloBody
 from configure import *
 from thop import profile
-
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
+
+matplotlib.use('Agg')
 
 """flops1, params1 = profile(model, inputs=(img,))
 print('model1 Params = ' + str(params1 / 1000 ** 2) + 'M')"""
@@ -22,10 +24,10 @@ print(img.shape)
 
 """ Draw attention map """
 
-out_features = model.backbone.forward(img)
-# print(len(out_features))
+out_features = model.backbone.backbone.forward(img)
+print(len(out_features))
 
-layer3 = torch.sum(out_features[0], dim=1)
+layer3 = torch.sum(out_features['dark2'], dim=1)
 # print(layer3.shape)
 
 layer3_flatten = torch.sum(layer3, dim=0)
