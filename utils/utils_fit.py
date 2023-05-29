@@ -1,5 +1,4 @@
 import os
-
 import torch
 from tqdm import tqdm
 
@@ -26,10 +25,13 @@ def fit_one_epoch(model_train, model, ema, yolo_loss, loss_history, eval_callbac
                 targets = [ann.cuda(local_rank) for ann in targets]
 
         optimizer.zero_grad()
+        
         if not fp16:
             outputs = model_train(images)
             loss_value = yolo_loss(outputs, targets)
             loss_value.backward()
+            if epoch > 50:
+                torch.nn.utils.clip_grad_norm_(model_train.parameters(), max_norm=9e10, norm_type=2)
             optimizer.step()
         else:
             from torch.cuda.amp import autocast
@@ -38,8 +40,11 @@ def fit_one_epoch(model_train, model, ema, yolo_loss, loss_history, eval_callbac
                 loss_value = yolo_loss(outputs, targets)
 
             scaler.scale(loss_value).backward()
+            if epoch > 50:
+                torch.nn.utils.clip_grad_norm_(model_train.parameters(), max_norm=9e10, norm_type=2)
             scaler.step(optimizer)
             scaler.update()
+        
         if ema:
             ema.update(model_train)
 

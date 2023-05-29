@@ -57,15 +57,9 @@ def show_config(**kwargs):
     print('-' * 70)
 
 
-class SiLU(nn.Module):
-    @staticmethod
-    def forward(x):
-        return x * torch.sigmoid(x)
-
-
 def get_activation(name="silu", inplace=True):
     if name == "silu":
-        module = SiLU()
+        module = nn.SiLU()
     elif name == "relu":
         module = nn.ReLU(inplace=inplace)
     elif name == "lrelu":
