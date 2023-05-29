@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from .darknet import BaseConv, CSPDarknet, CSPLayer, DWConv
+from .darknet import BaseConv, CSPLayerBase, DWConv, CSPDarknetBase, CSPDarknetWithTraAttention, CSPDarknetWithLightAttention
 
 
 class YOLOXHead(nn.Module):
@@ -60,17 +60,26 @@ class YOLOXHead(nn.Module):
 
 class YOLOPAFPN(nn.Module):
     def __init__(self, depth=1.0, width=1.0, in_features=("dark3", "dark4", "dark5"), in_channels=None,
-                 depthwise=True, act="silu"):
+                 depthwise=True, act="silu", atten_type='none'):
         super().__init__()
         if in_channels is None:
             in_channels = [256, 512, 1024]
         conv = DWConv if depthwise else BaseConv
-        self.backbone = CSPDarknet(depth, width, depthwise=depthwise, act=act)
+
+        if atten_type == 'none':
+            self.backbone = CSPDarknetBase(depth, width, depthwise=depthwise, act=act)
+        elif atten_type == 'traditional':
+            self.backbone = CSPDarknetWithTraAttention(depth, width, depthwise=depthwise, act=act)
+        elif atten_type == 'light':
+            self.backbone = CSPDarknetWithLightAttention(depth, width, depthwise=depthwise, act=act)
+        else:
+            pass
+        
         self.in_features = in_features
         self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
         self.lateral_conv0 = BaseConv(int(in_channels[2] * width), int(in_channels[1] * width), 1, 1, act=act)
 
-        self.C3_p4 = CSPLayer(
+        self.C3_p4 = CSPLayerBase(
             int(2 * in_channels[1] * width),
             int(in_channels[1] * width),
             round(3 * depth),
@@ -80,7 +89,7 @@ class YOLOPAFPN(nn.Module):
         )
 
         self.reduce_conv1 = BaseConv(int(in_channels[1] * width), int(in_channels[0] * width), 1, 1, act=act)
-        self.C3_p3 = CSPLayer(
+        self.C3_p3 = CSPLayerBase(
             int(2 * in_channels[0] * width),
             int(in_channels[0] * width),
             round(3 * depth),
@@ -90,7 +99,7 @@ class YOLOPAFPN(nn.Module):
         )
 
         self.bu_conv2 = conv(int(in_channels[0] * width), int(in_channels[0] * width), 3, 2, act=act)
-        self.C3_n3 = CSPLayer(
+        self.C3_n3 = CSPLayerBase(
             int(2 * in_channels[0] * width),
             int(in_channels[1] * width),
             round(3 * depth),
@@ -101,7 +110,7 @@ class YOLOPAFPN(nn.Module):
 
         self.bu_conv1 = conv(int(in_channels[1] * width), int(in_channels[1] * width), 3, 2, act=act)
 
-        self.C3_n4 = CSPLayer(
+        self.C3_n4 = CSPLayerBase(
             int(2 * in_channels[1] * width),
             int(in_channels[2] * width),
             round(3 * depth),
@@ -136,14 +145,14 @@ class YOLOPAFPN(nn.Module):
 
 
 class YoloBody(nn.Module):
-    def __init__(self, num_classes, phi):
+    def __init__(self, num_classes, phi, atten_type='none'):
         super().__init__()
         depth_dict = {'nano': 0.33, 'tiny': 0.33, 's': 0.33, 'm': 0.67, 'l': 1.00, 'x': 1.33, }
         width_dict = {'nano': 0.25, 'tiny': 0.375, 's': 0.50, 'm': 0.75, 'l': 1.00, 'x': 1.25, }
         depth, width = depth_dict[phi], width_dict[phi]
         depthwise = True if phi == 'nano' else False
 
-        self.backbone = YOLOPAFPN(depth, width, depthwise=depthwise)
+        self.backbone = YOLOPAFPN(depth, width, depthwise=depthwise, atten_type=atten_type)
         self.head = YOLOXHead(num_classes, width, depthwise=depthwise)
 
     def forward(self, x):

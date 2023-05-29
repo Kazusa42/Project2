@@ -152,7 +152,7 @@ class Fold(nn.Module):
         return x
 
 class StokenAttention(nn.Module):
-    def __init__(self, dim, stoken_size, n_iter=1, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, stoken_size, n_iter=1, num_heads=4, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
         super().__init__()
         
         self.n_iter = n_iter

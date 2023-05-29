@@ -1,9 +1,7 @@
 import torch
 from torch import nn
 
-from .attention import AttenBlock
-from .sta import StokenAttentionLayer
-from configure import ATTEN_TYPE
+from .attention import TraAttenBlock, LightAttenBlock
 from utils.utils import get_activation
 
 
@@ -13,11 +11,11 @@ class Focus(nn.Module):
         self.conv = BaseConv(in_channels * 4, out_channels, ksize, stride, act=act)
 
     def forward(self, x):
-        patch_top_left = x[..., ::2, ::2]
-        patch_bot_left = x[..., 1::2, ::2]
-        patch_top_right = x[..., ::2, 1::2]
+        patch_top_left = x[...,  ::2,  ::2]
+        patch_bot_left = x[..., 1::2,  ::2]
+        patch_top_right = x[...,  ::2, 1::2]
         patch_bot_right = x[..., 1::2, 1::2]
-        x = torch.cat((patch_top_left, patch_bot_left, patch_top_right, patch_bot_right,), dim=1, )
+        x = torch.cat((patch_top_left, patch_bot_left, patch_top_right, patch_bot_right,), dim=1,)
         return self.conv(x)
 
 
@@ -25,8 +23,8 @@ class BaseConv(nn.Module):
     def __init__(self, in_channels, out_channels, ksize, stride, groups=1, bias=False, act="silu"):
         super().__init__()
         pad = (ksize - 1) // 2
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=ksize, stride=stride, padding=pad, groups=groups,
-                              bias=bias)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=ksize, stride=stride,
+                              padding=pad, groups=groups, bias=bias)
         self.bn = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.03)
         self.act = get_activation(act, inplace=True)
 
@@ -40,7 +38,8 @@ class BaseConv(nn.Module):
 class DWConv(nn.Module):
     def __init__(self, in_channels, out_channels, ksize, stride=1, act="silu"):
         super().__init__()
-        self.dconv = BaseConv(in_channels, in_channels, ksize=ksize, stride=stride, groups=in_channels, act=act, )
+        self.dconv = BaseConv(in_channels, in_channels, ksize=ksize, stride=stride,
+                              groups=in_channels, act=act,)
         self.pconv = BaseConv(in_channels, out_channels, ksize=1, stride=1, groups=1, act=act)
 
     def forward(self, x):
@@ -53,7 +52,8 @@ class SPPBottleneck(nn.Module):
         super().__init__()
         hidden_channels = in_channels // 2
         self.conv1 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=activation)
-        self.m = nn.ModuleList([nn.MaxPool2d(kernel_size=ks, stride=1, padding=ks // 2) for ks in kernel_sizes])
+        self.m = nn.ModuleList([nn.MaxPool2d(kernel_size=ks, stride=1, padding=ks // 2)
+                                for ks in kernel_sizes])
         conv2_channels = hidden_channels * (len(kernel_sizes) + 1)
         self.conv2 = BaseConv(conv2_channels, out_channels, 1, stride=1, act=activation)
 
@@ -66,12 +66,14 @@ class SPPBottleneck(nn.Module):
 
 class Bottleneck(nn.Module):
     # Standard bottleneck
-    def __init__(self, in_channels, out_channels, shortcut=True, expansion=0.5, depthwise=True, act="silu", ):
+    def __init__(self, in_channels, out_channels, shortcut=True, expansion=0.5,
+                 depthwise=False, act="silu",):
         super().__init__()
         hidden_channels = int(out_channels * expansion)
-        conv = DWConv if depthwise else BaseConv
+        Conv = DWConv if depthwise else BaseConv
+
         self.conv1 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
-        self.conv2 = conv(hidden_channels, out_channels, 3, stride=1, act=act)
+        self.conv2 = Conv(hidden_channels, out_channels, 3, stride=1, act=act)
         self.use_add = shortcut and in_channels == out_channels
 
     def forward(self, x):
@@ -81,41 +83,18 @@ class Bottleneck(nn.Module):
         return y
 
 
-class CSPLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, n=1, shortcut=True, expansion=0.5, depthwise=True,
-                 act="silu", atten_type=ATTEN_TYPE, token_num=4, head=4):
+class CSPLayerBase(nn.Module):
+    def __init__(self, in_channels, out_channels, n=1, shortcut=True, expansion=0.5, depthwise=False, act="silu",):
         super().__init__()
         hidden_channels = int(out_channels * expansion)
 
-        self.conv1 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
-        self.conv2 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
-        self.conv3 = BaseConv(2 * hidden_channels, out_channels, 1, stride=1, act=act)
-        if atten_type == 'light':
-             module_list = [StokenAttentionLayer(hidden_channels, 1, [token_num, token_num], num_heads=head) for _ in range(n)]
-        else:
-            module_list = [Bottleneck(hidden_channels, hidden_channels, shortcut, 1.0, depthwise, act=act) for _ in
-                           range(n)]
-        self.m = nn.Sequential(*module_list)
+        self.conv1  = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
+        self.conv2  = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
+        self.conv3  = BaseConv(2 * hidden_channels, out_channels, 1, stride=1, act=act)
 
-    def forward(self, x):
-        x_1 = self.conv1(x)
-        x_2 = self.conv2(x)
-        x_1 = self.m(x_1)
-        x = torch.cat((x_1, x_2), dim=1)
-        return self.conv3(x)
-    
-
-class CSPLayerWithTraditionalAttention(nn.Module):
-    def __init__(self, in_channels, out_channels, n=1, shortcut=True, expansion=0.5, depthwise=True, act="silu"):
-        super().__init__()
-        hidden_channels = int(out_channels * expansion)
-
-        self.conv1 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
-        self.conv2 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
-        self.conv3 = BaseConv(2 * hidden_channels, out_channels, 1, stride=1, act=act)
-
-        module_list = [AttenBlock(hidden_channels, hidden_channels) for _ in range(n)]
-        self.m = nn.Sequential(*module_list)
+        module_list = [Bottleneck(hidden_channels, hidden_channels, shortcut, 1.0, depthwise, act=act)
+                       for _ in range(n)]
+        self.m      = nn.Sequential(*module_list)
 
     def forward(self, x):
         x_1 = self.conv1(x)
@@ -125,53 +104,83 @@ class CSPLayerWithTraditionalAttention(nn.Module):
         return self.conv3(x)
 
 
-class CSPDarknet(nn.Module):
-    def __init__(self, dep_mul, wid_mul, out_features=("dark3", "dark4", "dark5"), depthwise=True, act="silu",
-                 atten_type=ATTEN_TYPE, token_nums=[8, 4, 2, 1], heads=[4, 4, 2, 2]):
+class CSPLayerWithTraAtten(nn.Module):
+    def __init__(self, in_channels, out_channels, n=1, expansion=0.5, act="silu",):
+        super().__init__()
+        hidden_channels = int(out_channels * expansion)
+
+        self.conv1  = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
+        self.conv2  = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
+        self.conv3  = BaseConv(2 * hidden_channels, out_channels, 1, stride=1, act=act)
+
+        module_list = [TraAttenBlock(hidden_channels, hidden_channels) for _ in range(n)]
+        self.m      = nn.Sequential(*module_list)
+
+    def forward(self, x):
+        x_1 = self.conv1(x)
+        x_2 = self.conv2(x)
+        x_1 = self.m(x_1)
+        x = torch.cat((x_1, x_2), dim=1)
+        return self.conv3(x)
+
+
+class CSPLayerWithLightAtten(nn.Module):
+    def __init__(self, in_channels, out_channels, n=1, expansion=0.5, act="silu",):
+        super().__init__()
+        hidden_channels = int(out_channels * expansion)
+
+        self.conv1  = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
+        self.conv2  = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
+        self.conv3  = BaseConv(2 * hidden_channels, out_channels, 1, stride=1, act=act)
+
+        module_list = [LightAttenBlock(hidden_channels, hidden_channels) for _ in range(n)]
+        self.m      = nn.Sequential(*module_list)
+
+    def forward(self, x):
+        x_1 = self.conv1(x)
+        x_2 = self.conv2(x)
+        x_1 = self.m(x_1)
+        x = torch.cat((x_1, x_2), dim=1)
+        return self.conv3(x)
+
+
+class CSPDarknetBase(nn.Module):
+
+    def __init__(self, dep_mul, wid_mul, out_features=("dark3", "dark4", "dark5"), depthwise=True, act="silu",):
         super().__init__()
         assert out_features, "please provide output features of Darknet"
         self.out_features = out_features
+        Conv = DWConv if depthwise else BaseConv
 
-        conv = DWConv if depthwise else BaseConv
-
-        base_channels = int(wid_mul * 64)  # 64
-        base_depth = max(round(dep_mul * 3), 1)  # 3
-        # print(base_depth)
+        base_channels = int(wid_mul * 64)
+        base_depth = max(round(dep_mul * 3), 1)
 
         self.stem = Focus(3, base_channels, ksize=3, act=act)
 
         self.dark2 = nn.Sequential(
-            conv(base_channels, base_channels * 2, 3, 2, act=act),
-            CSPLayer(base_channels * 2, base_channels * 2, n=base_depth, depthwise=depthwise, act=act,
-                     atten_type=atten_type, token_num=token_nums[0], head=heads[0]),
+            Conv(base_channels, base_channels * 2, 3, 2, act=act),
+            CSPLayerBase(base_channels * 2, base_channels * 2, n=base_depth,
+                     depthwise=depthwise, act=act),
         )
 
         self.dark3 = nn.Sequential(
-            conv(base_channels * 2, base_channels * 4, 3, 2, act=act),
-            CSPLayer(base_channels * 4, base_channels * 4, n=base_depth * 3, depthwise=depthwise, act=act,
-                     atten_type=atten_type, token_num=token_nums[1], head=heads[1]),
+            Conv(base_channels * 2, base_channels * 4, 3, 2, act=act),
+            CSPLayerBase(base_channels * 4, base_channels * 4, n=base_depth * 3,
+                     depthwise=depthwise, act=act),
         )
 
         self.dark4 = nn.Sequential(
-            conv(base_channels * 4, base_channels * 8, 3, 2, act=act),
-            CSPLayer(base_channels * 8, base_channels * 8, n=base_depth * 3, depthwise=depthwise, act=act,
-                     atten_type=atten_type, token_num=token_nums[2], head=heads[2]),
+            Conv(base_channels * 4, base_channels * 8, 3, 2, act=act),
+            CSPLayerBase(base_channels * 8, base_channels * 8, n=base_depth * 3,
+                     depthwise=depthwise, act=act),
         )
 
-        if atten_type == 'traditional':
-            self.dark5 = nn.Sequential(
-                conv(base_channels * 8, base_channels * 16, 3, 2, act=act),
-                SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
-                CSPLayerWithTraditionalAttention(base_channels * 16, base_channels * 16, n=base_depth,
-                                                 shortcut=False, depthwise=depthwise, act=act),
-            )
-        else:
-            self.dark5 = nn.Sequential(
-                conv(base_channels * 8, base_channels * 16, 3, 2, act=act),
-                SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
-                CSPLayer(base_channels * 16, base_channels * 16, n=base_depth, shortcut=False, depthwise=depthwise,
-                        act=act, atten_type=ATTEN_TYPE, token_num=token_nums[3], head=heads[3]),
-            )
+        self.dark5 = nn.Sequential(
+            Conv(base_channels * 8, base_channels * 16, 3, 2, act=act),
+            SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
+            CSPLayerBase(base_channels * 16, base_channels * 16, n=base_depth, shortcut=False,
+                     depthwise=depthwise, act=act),
+        )
 
     def forward(self, x):
         outputs = {}
@@ -179,17 +188,115 @@ class CSPDarknet(nn.Module):
         outputs["stem"] = x
         x = self.dark2(x)
         outputs["dark2"] = x
-
         x = self.dark3(x)
         outputs["dark3"] = x
-
         x = self.dark4(x)
         outputs["dark4"] = x
+        x = self.dark5(x)
+        outputs["dark5"] = x
+        return {k: v for k, v in outputs.items() if k in self.out_features}
 
+
+class CSPDarknetWithTraAttention(nn.Module):
+    
+    def __init__(self, dep_mul, wid_mul, out_features=("dark3", "dark4", "dark5"), depthwise=True, act="silu",):
+        super().__init__()
+        assert out_features, "please provide output features of Darknet"
+        self.out_features = out_features
+        Conv = DWConv if depthwise else BaseConv
+
+        base_channels = int(wid_mul * 64)
+        base_depth = max(round(dep_mul * 3), 1)
+
+        self.stem = Focus(3, base_channels, ksize=3, act=act)
+
+        self.dark2 = nn.Sequential(
+            Conv(base_channels, base_channels * 2, 3, 2, act=act),
+            CSPLayerBase(base_channels * 2, base_channels * 2, n=base_depth,
+                     depthwise=depthwise, act=act),
+        )
+
+        self.dark3 = nn.Sequential(
+            Conv(base_channels * 2, base_channels * 4, 3, 2, act=act),
+            CSPLayerBase(base_channels * 4, base_channels * 4, n=base_depth * 3,
+                     depthwise=depthwise, act=act),
+        )
+
+        self.dark4 = nn.Sequential(
+            Conv(base_channels * 4, base_channels * 8, 3, 2, act=act),
+            CSPLayerBase(base_channels * 8, base_channels * 8, n=base_depth * 3,
+                     depthwise=depthwise, act=act),
+        )
+
+        self.dark5 = nn.Sequential(
+            Conv(base_channels * 8, base_channels * 16, 3, 2, act=act),
+            SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
+            CSPLayerWithTraAtten(base_channels * 16, base_channels * 16, n=base_depth, act=act),
+        )
+
+    def forward(self, x):
+        outputs = {}
+        x = self.stem(x)
+        outputs["stem"] = x
+        x = self.dark2(x)
+        outputs["dark2"] = x
+        x = self.dark3(x)
+        outputs["dark3"] = x
+        x = self.dark4(x)
+        outputs["dark4"] = x
+        x = self.dark5(x)
+        outputs["dark5"] = x
+        return {k: v for k, v in outputs.items() if k in self.out_features}
+    
+
+class CSPDarknetWithLightAttention(nn.Module):
+    
+    def __init__(self, dep_mul, wid_mul, out_features=("dark3", "dark4", "dark5"), depthwise=True, act="silu",):
+        super().__init__()
+        assert out_features, "please provide output features of Darknet"
+        self.out_features = out_features
+        Conv = DWConv if depthwise else BaseConv
+
+        base_channels = int(wid_mul * 64)
+        base_depth = max(round(dep_mul * 3), 1)
+
+        self.stem = Focus(3, base_channels, ksize=3, act=act)
+
+        self.dark2 = nn.Sequential(
+            Conv(base_channels, base_channels * 2, 3, 2, act=act),
+            CSPLayerWithLightAtten(base_channels * 2, base_channels * 2, n=base_depth, act=act),
+        )
+
+        self.dark3 = nn.Sequential(
+            Conv(base_channels * 2, base_channels * 4, 3, 2, act=act),
+            CSPLayerWithLightAtten(base_channels * 4, base_channels * 4, n=base_depth * 3, act=act),
+        )
+
+        self.dark4 = nn.Sequential(
+            Conv(base_channels * 4, base_channels * 8, 3, 2, act=act),
+            CSPLayerWithLightAtten(base_channels * 8, base_channels * 8, n=base_depth * 3, act=act),
+        )
+
+        self.dark5 = nn.Sequential(
+            Conv(base_channels * 8, base_channels * 16, 3, 2, act=act),
+            SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
+            CSPLayerWithLightAtten(base_channels * 16, base_channels * 16, n=base_depth, act=act),
+        )
+
+    def forward(self, x):
+        outputs = {}
+        x = self.stem(x)
+        outputs["stem"] = x
+        x = self.dark2(x)
+        outputs["dark2"] = x
+        x = self.dark3(x)
+        outputs["dark3"] = x
+        x = self.dark4(x)
+        outputs["dark4"] = x
         x = self.dark5(x)
         outputs["dark5"] = x
         return {k: v for k, v in outputs.items() if k in self.out_features}
 
 
 if __name__ == '__main__':
-    print(CSPDarknet(1, 1))
+    print(CSPDarknetBase(1, 1))
